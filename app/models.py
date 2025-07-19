@@ -26,7 +26,8 @@ class User(db.Model):
 class URL(db.Model):
     __tablename__ = 'urls'
     
-    id = db.Column(db.BigInteger, primary_key=True, autoincrement=True)
+    # Fix the ID field definition
+    id = db.Column(db.BigInteger, primary_key=True)  # Remove autoincrement=True if present
     original_url = db.Column(db.Text, nullable=False)
     short_code = db.Column(db.String(16), unique=True, nullable=False, index=True)
     user_id = db.Column(db.Integer, db.ForeignKey('users.id'), nullable=True)
@@ -43,13 +44,11 @@ class URL(db.Model):
         return f'<URL {self.short_code}>'
     
     def is_expired(self):
-        """Check if URL has expired"""
         if self.expires_at:
             return datetime.utcnow() > self.expires_at
         return False
     
     def to_dict(self):
-        """Convert to dictionary for JSON response"""
         return {
             'id': self.id,
             'original_url': self.original_url,

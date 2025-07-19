@@ -51,6 +51,7 @@ class URLShortenerService:
         
         # Create URL record
         url_record = URL(
+            id=counter_id,
             original_url=original_url,
             short_code=short_code,
             user_id=user.id if user else None,
@@ -168,7 +169,7 @@ class URLShortenerService:
         
         return {
             'urls': [url.to_dict() for url in urls],
-            'total': URL.query.filter_by(user_id=user.id, is_active=True).count()
+            'total_count': URL.query.filter_by(user_id=user.id, is_active=True).count()
         }, 200
     
     def delete_url(self, short_code, api_key):
