@@ -2,8 +2,21 @@ from flask import Blueprint, request, jsonify, redirect, render_template_string
 from app.services import URLShortenerService, UserService
 from app import limiter
 from datetime import datetime
+import os
 
 main = Blueprint('main', __name__)
+
+# Performance testing switch - set to True to disable rate limiting
+PERFORMANCE_MODE = os.getenv('PERFORMANCE_MODE', 'false').lower() == 'true'
+
+def rate_limit(limit_string):
+    """Conditional rate limiting decorator"""
+    def decorator(f):
+        if PERFORMANCE_MODE:
+            return f  # No rate limiting in performance mode
+        else:
+            return limiter.limit(limit_string)(f)  # Apply rate limiting normally
+    return decorator
 
 # Simple HTML template for web interface
 HTML_TEMPLATE = """
@@ -107,10 +120,20 @@ HTML_TEMPLATE = """
         a:hover { 
             text-decoration: underline; 
         }
+        .performance-banner {
+            background: #fff3cd; 
+            padding: 10px; 
+            border-radius: 4px; 
+            margin-bottom: 20px; 
+            text-align: center;
+        }
     </style>
 </head>
 <body>
-    <h1>URL Shortener</h1>
+    <h1>URL Shortener""" + (""" - Performance Mode""" if PERFORMANCE_MODE else "") + """</h1>
+    """ + ("""<div class="performance-banner">
+        <strong>⚡ Performance Mode Active - Rate Limiting Disabled</strong>
+    </div>""" if PERFORMANCE_MODE else "") + """
     
     <div class="container">
         <h2>Shorten URL</h2>
@@ -313,7 +336,7 @@ def redirect_url(short_code):
 
 # API Routes
 @main.route('/api/shorten', methods=['POST'])
-@limiter.limit("10 per minute")
+@rate_limit("10 per minute")  # This will be ignored in performance mode
 def create_short_url():
     """Create a shortened URL"""
     service = URLShortenerService()
@@ -341,7 +364,7 @@ def get_url_stats(short_code):
     return jsonify(result), status_code
 
 @main.route('/api/user/create', methods=['POST'])
-@limiter.limit("5 per hour")
+@rate_limit("5 per hour")  # This will be ignored in performance mode
 def create_user():
     """Create a new user"""
     data = request.get_json() or {}
@@ -392,25 +415,27 @@ def health_check():
         'status': 'healthy',
         'timestamp': datetime.utcnow().isoformat(),
         'version': '1.0.0',
+        'performance_mode': PERFORMANCE_MODE,
         'features': [
             'URL shortening',
             'Custom aliases',
             'Analytics tracking',
-            'Rate limiting',
+            'Rate limiting' if not PERFORMANCE_MODE else 'Rate limiting (DISABLED)',
             'Redis caching',
             'PostgreSQL storage'
         ]
     }), 200
 
-# Error Handlers
-@main.errorhandler(429)
-def rate_limit_exceeded(e):
-    """Handle rate limit exceeded"""
-    return jsonify({
-        'error': 'Rate limit exceeded',
-        'message': 'Too many requests. Please try again later.',
-        'retry_after': '60 seconds'
-    }), 429
+# Error Handlers (only active when not in performance mode)
+if not PERFORMANCE_MODE:
+    @main.errorhandler(429)
+    def rate_limit_exceeded(e):
+        """Handle rate limit exceeded"""
+        return jsonify({
+            'error': 'Rate limit exceeded',
+            'message': 'Too many requests. Please try again later.',
+            'retry_after': '60 seconds'
+        }), 429
 
 @main.errorhandler(404)
 def not_found(e):

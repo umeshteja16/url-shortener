@@ -17,11 +17,11 @@ def create_limiter():
     """Create rate limiter with Redis or in-memory storage"""
     try:
         if os.getenv('REDIS_URL'):
-            limiter = Limiter(
+            if os.getenv('PERFORMANCE_MODE', 'false').lower() == 'true':
+                limiter = Limiter(
                 key_func=get_remote_address,
-                default_limits=["200 per day", "50 per hour"],
-                storage_uri=os.getenv('REDIS_URL')
-            )
+                default_limits=[]  # No default limits in performance mode
+                )
         else:
             limiter = Limiter(
                 key_func=get_remote_address,
@@ -47,6 +47,21 @@ def create_app():
     app.config['BASE_URL'] = os.getenv('BASE_URL', 'http://localhost:5000')
     app.config['FLASK_ENV'] = os.getenv('FLASK_ENV', 'development')
     
+
+
+    #These settings will:
+    # POOL_SIZE: 20 concurrent database connections
+    # MAX_OVERFLOW: 30 additional connections when needed
+    # POOL_TIMEOUT: 30 seconds to wait for connection
+    # POOL_RECYCLE: Recycle connections every 30 minutes
+    # This should help push your performance closer to the 8,000 req/s target! 
+    app.config['SQLALCHEMY_POOL_SIZE'] = 20
+    app.config['SQLALCHEMY_MAX_OVERFLOW'] = 30
+    app.config['SQLALCHEMY_POOL_TIMEOUT'] = 30
+    app.config['SQLALCHEMY_POOL_RECYCLE'] = 1800
+
+
+
     # Validate required configuration
     if not app.config['SQLALCHEMY_DATABASE_URI']:
         raise RuntimeError("DATABASE_URL environment variable is required")

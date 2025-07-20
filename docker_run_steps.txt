@@ -1,0 +1,29 @@
+# 1. Start services
+docker-compose up -d --build
+
+# 2. Wait 15 seconds for services to start
+
+# 3. Initialize database
+docker-compose exec app python -c "
+from app import create_app, db
+from app.models import Counter, User
+
+app = create_app()
+with app.app_context():
+    db.create_all()
+    print('✅ Tables created')
+    
+    counter = Counter.query.filter_by(name='url_counter').first()
+    if not counter:
+        counter = Counter(name='url_counter', value=100000000000)
+        db.session.add(counter)
+        db.session.commit()
+        print('✅ Counter created')
+    
+    test_user = User.query.filter_by(email='test@example.com').first()
+    if not test_user:
+        test_user = User(email='test@example.com')
+        db.session.add(test_user)
+        db.session.commit()
+        print(f'✅ Test user: {test_user.api_key}')
+"

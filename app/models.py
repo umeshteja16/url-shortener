@@ -1,7 +1,11 @@
-from app import db
+# Fixed models.py
+from flask_sqlalchemy import SQLAlchemy
 from datetime import datetime, timedelta
 import secrets
 import string
+
+# Import db from __init__.py will be handled there
+from app import db
 
 class User(db.Model):
     __tablename__ = 'users'
@@ -26,8 +30,8 @@ class User(db.Model):
 class URL(db.Model):
     __tablename__ = 'urls'
     
-    # Fix the ID field definition
-    id = db.Column(db.BigInteger, primary_key=True)  # Remove autoincrement=True if present
+    # Fix: Remove manual ID assignment, let database handle it
+    id = db.Column(db.BigInteger, primary_key=True, autoincrement=True)
     original_url = db.Column(db.Text, nullable=False)
     short_code = db.Column(db.String(16), unique=True, nullable=False, index=True)
     user_id = db.Column(db.Integer, db.ForeignKey('users.id'), nullable=True)
@@ -85,7 +89,7 @@ class Analytics(db.Model):
         }
 
 class Counter(db.Model):
-    """Counter for distributed ID generation"""
+    """Counter for distributed short code generation"""
     __tablename__ = 'counters'
     
     id = db.Column(db.Integer, primary_key=True)
@@ -93,13 +97,21 @@ class Counter(db.Model):
     value = db.Column(db.BigInteger, default=100000000000)  # Start from large number
     
     @classmethod
-    def get_next_id(cls):
-        """Get next counter value for URL generation"""
-        counter = cls.query.filter_by(name='url_counter').first()
-        if not counter:
-            counter = cls(name='url_counter', value=100000000000)
-            db.session.add(counter)
-        
-        counter.value += 1
-        db.session.commit()
-        return counter.value
+    def get_next_value(cls):
+        """Get next counter value for short code generation"""
+        try:
+            counter = cls.query.filter_by(name='url_counter').with_for_update().first()
+            if not counter:
+                counter = cls(name='url_counter', value=100000000000)
+                db.session.add(counter)
+                db.session.flush()  # Get the ID without committing
+            
+            counter.value += 1
+            next_value = counter.value
+            db.session.commit()
+            return next_value
+        except Exception as e:
+            db.session.rollback()
+            # Fallback to timestamp-based ID if counter fails
+            import time
+            return int(time.time() * 1000000) % 100000000000

@@ -1,3 +1,4 @@
+# Fixed services.py
 from app import db
 from app.models import URL, Analytics, Counter, User
 from app.utils import Base62Encoder, URLValidator, CacheManager
@@ -39,19 +40,28 @@ class URLShortenerService:
             short_code = custom_code
             is_custom = True
         else:
-            # Generate unique short code
-            counter_id = Counter.get_next_id()
-            short_code = Base62Encoder.encode(counter_id)
+            # Generate unique short code using counter
+            counter_value = Counter.get_next_value()
+            short_code = Base62Encoder.encode(counter_value)
             is_custom = False
+            
+            # Ensure uniqueness (very rare collision)
+            retries = 0
+            while URL.query.filter_by(short_code=short_code, is_active=True).first() and retries < 5:
+                counter_value = Counter.get_next_value()
+                short_code = Base62Encoder.encode(counter_value)
+                retries += 1
+            
+            if retries >= 5:
+                return {'error': 'Unable to generate unique short code'}, 500
         
         # Set expiration
         expires_at = None
         if expires_in_days:
             expires_at = datetime.utcnow() + timedelta(days=expires_in_days)
         
-        # Create URL record
+        # Create URL record - let database assign ID
         url_record = URL(
-            id=counter_id,
             original_url=original_url,
             short_code=short_code,
             user_id=user.id if user else None,
@@ -76,6 +86,7 @@ class URLShortenerService:
             
         except Exception as e:
             db.session.rollback()
+            print(f"Database error: {e}")
             return {'error': 'Failed to create short URL'}, 500
     
     def get_original_url(self, short_code, track_analytics=True, request_data=None):
@@ -101,8 +112,12 @@ class URLShortenerService:
             self._track_analytics(url_record, request_data)
         
         # Update click count
-        url_record.click_count += 1
-        db.session.commit()
+        try:
+            url_record.click_count += 1
+            db.session.commit()
+        except Exception as e:
+            print(f"Click count update error: {e}")
+            db.session.rollback()
         
         # Update cache
         self.cache.set_url(short_code, url_record.original_url)
@@ -125,6 +140,7 @@ class URLShortenerService:
             db.session.commit()
         except Exception as e:
             print(f"Analytics tracking error: {e}")
+            db.session.rollback()
     
     def get_url_stats(self, short_code, api_key=None):
         """Get URL statistics"""
@@ -182,13 +198,17 @@ class URLShortenerService:
         if not url_record:
             return {'error': 'URL not found or unauthorized'}, 404
         
-        url_record.is_active = False
-        db.session.commit()
-        
-        # Remove from cache
-        self.cache.delete_url(short_code)
-        
-        return {'message': 'URL deleted successfully'}, 200
+        try:
+            url_record.is_active = False
+            db.session.commit()
+            
+            # Remove from cache
+            self.cache.delete_url(short_code)
+            
+            return {'message': 'URL deleted successfully'}, 200
+        except Exception as e:
+            db.session.rollback()
+            return {'error': 'Failed to delete URL'}, 500
 
 class UserService:
     """User management service"""
@@ -217,6 +237,7 @@ class UserService:
             
         except Exception as e:
             db.session.rollback()
+            print(f"User creation error: {e}")
             return {'error': 'Failed to create user'}, 500
     
     @staticmethod
