@@ -1,3 +1,5 @@
+# Fix 1: Update your docker-compose.yml environment section
+
 version: '3.8'
 
 services:
@@ -44,6 +46,7 @@ services:
       BASE_URL: http://localhost:5000
       FLASK_ENV: production
       PERFORMANCE_MODE: "true"
+      PORT: "5000"  # Add explicit PORT variable
     ports:
       - "5000:5000"
     depends_on:
@@ -52,6 +55,8 @@ services:
       redis:
         condition: service_healthy
     restart: unless-stopped
+    # Override the command to use gunicorn directly
+    command: gunicorn --bind 0.0.0.0:5000 --workers 4 run:app
 
 volumes:
   postgres_data:
