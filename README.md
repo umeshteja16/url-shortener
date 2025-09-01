@@ -31,7 +31,7 @@ A production-ready URL shortener service built with Flask, PostgreSQL, and Redis
 
 ### 1. Clone and Setup
 ```bash
-git clone <repository-url>
+git clone https://github.com/umeshteja16/url-shortener.git
 cd url-shortener
 pip install -r requirements.txt
 ```
